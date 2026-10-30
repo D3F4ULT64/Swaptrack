@@ -11,14 +11,8 @@ from tkinter import filedialog, messagebox, ttk
 from . import __version__, core
 from .core import Cancelled, LengthMode, SwapError
 
-VIDEO_TYPES = [
-    ("Video files", "*.mp4 *.mov *.mkv *.avi *.webm *.m4v *.flv *.wmv *.mpg *.mpeg"),
-    ("All files", "*.*"),
-]
-AUDIO_TYPES = [
-    ("Audio files", "*.mp3 *.wav *.m4a *.aac *.flac *.ogg *.opus *.wma *.aiff"),
-    ("All files", "*.*"),
-]
+VIDEO_TYPES = [("Video files", "*.mp4 *.mov *.mkv *.avi *.webm *.m4v *.flv *.wmv *.mpg *.mpeg"), ("All files", "*.*")]
+AUDIO_TYPES = [("Audio files", "*.mp3 *.wav *.m4a *.aac *.flac *.ogg *.opus *.wma *.aiff"), ("All files", "*.*")]
 SAVE_TYPES = [("MP4", "*.mp4"), ("MOV", "*.mov"), ("MKV", "*.mkv"), ("WebM", "*.webm"), ("AVI", "*.avi")]
 
 MODE_LABELS = {
@@ -41,17 +35,15 @@ class App(ttk.Frame):
         self.audio_var = tk.StringVar()
         self.output_var = tk.StringVar()
         self.mode_var = tk.StringVar(value=LengthMode.MATCH_VIDEO.value)
-        self.volume_var = tk.IntVar(value=100)
+        self.volume_var = tk.DoubleVar(value=100.0)
         self.status_var = tk.StringVar(value="Pick a video and an audio file to get started.")
 
         self._build()
         self.pack(fill="both", expand=True)
         self.root.after(100, self._poll)
 
-    # ---------- layout ----------
     def _build(self) -> None:
         self.columnconfigure(1, weight=1)
-
         self._file_row(0, "Video", self.video_var, self._pick_video)
         self._file_row(1, "New audio", self.audio_var, self._pick_audio)
         self._file_row(2, "Save as", self.output_var, self._pick_output, browse_text="Choose…")
@@ -74,9 +66,7 @@ class App(ttk.Frame):
 
         self.progress = ttk.Progressbar(self, maximum=100)
         self.progress.grid(row=4, column=0, columnspan=3, sticky="ew", pady=(16, 4))
-        ttk.Label(self, textvariable=self.status_var, wraplength=520).grid(
-            row=5, column=0, columnspan=3, sticky="w"
-        )
+        ttk.Label(self, textvariable=self.status_var, wraplength=520).grid(row=5, column=0, columnspan=3, sticky="w")
 
         buttons = ttk.Frame(self)
         buttons.grid(row=6, column=0, columnspan=3, sticky="e", pady=(14, 0))
@@ -90,7 +80,6 @@ class App(ttk.Frame):
         ttk.Entry(self, textvariable=var, width=52).grid(row=row, column=1, sticky="ew", padx=8, pady=4)
         ttk.Button(self, text=browse_text, command=command).grid(row=row, column=2, pady=4)
 
-    # ---------- pickers ----------
     def _pick_video(self) -> None:
         path = filedialog.askopenfilename(title="Select a video", filetypes=VIDEO_TYPES)
         if not path:
@@ -120,22 +109,22 @@ class App(ttk.Frame):
             self._output_auto = False
 
     def _on_volume(self, _value=None) -> None:
-        self.volume_label.config(text=f"{int(float(self.volume_var.get()))}%")
+        self.volume_label.config(text=f"{round(float(self.volume_var.get()))}%")
 
-    # ---------- run / cancel ----------
     def _start(self) -> None:
-        video, audio, output = self.video_var.get().strip(), self.audio_var.get().strip(), self.output_var.get().strip()
+        video = self.video_var.get().strip()
+        audio = self.audio_var.get().strip()
+        output = self.output_var.get().strip()
         if not video or not audio:
             messagebox.showwarning("SwapTrack", "Please choose both a video and an audio file.")
             return
         if not output:
             messagebox.showwarning("SwapTrack", "Please choose where to save the result.")
             return
-        if Path(output).exists() and not self._output_auto:
-            pass  # the save dialog already asked about overwriting
-        elif Path(output).exists():
-            if not messagebox.askyesno("SwapTrack", f"{Path(output).name} already exists. Overwrite it?"):
-                return
+        if Path(output).exists() and not messagebox.askyesno(
+            "SwapTrack", f"{Path(output).name} already exists. Overwrite it?"
+        ):
+            return
 
         self.cancel_event.clear()
         self.progress["value"] = 0
@@ -144,7 +133,7 @@ class App(ttk.Frame):
         self.cancel_btn.config(state="normal")
 
         mode = LengthMode(self.mode_var.get())
-        volume = self.volume_var.get() / 100
+        volume = float(self.volume_var.get()) / 100.0
 
         def work():
             try:
@@ -158,7 +147,7 @@ class App(ttk.Frame):
                 self.events.put(("cancelled", None))
             except SwapError as exc:
                 self.events.put(("error", str(exc)))
-            except Exception as exc:  # unexpected
+            except Exception as exc:
                 self.events.put(("error", f"Unexpected error: {exc}"))
 
         self.worker = threading.Thread(target=work, daemon=True)
@@ -166,11 +155,13 @@ class App(ttk.Frame):
 
     def _cancel(self) -> None:
         self.cancel_event.set()
+        self.cancel_btn.config(state="disabled")
         self.status_var.set("Cancelling…")
 
     def _finish(self) -> None:
         self.start_btn.config(state="normal")
         self.cancel_btn.config(state="disabled")
+        self.worker = None
 
     def _poll(self) -> None:
         try:
